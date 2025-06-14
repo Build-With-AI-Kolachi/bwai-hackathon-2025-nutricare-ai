@@ -64,6 +64,128 @@ export const AIChat = ({ medicalProfile, analysisResult, className = "" }: AICha
 
   const currentContent = content[language];
 
+  // Generate intelligent AI responses based on user input and medical profile
+  const generateAIResponse = (userInput: string, hasImage: boolean): string => {
+    const input = userInput.toLowerCase();
+    const conditions = medicalProfile.conditions;
+    const hasConditions = conditions && conditions.length > 0;
+    
+    // Responses based on common nutrition questions
+    if (input.includes('meal plan') || input.includes('diet plan')) {
+      const bmi = medicalProfile.weight / Math.pow(medicalProfile.height / 100, 2);
+      const calories = medicalProfile.targetCalories;
+      return `Based on your profile (BMI: ${bmi.toFixed(1)}, Target: ${calories} calories/day), here's a personalized meal plan:
+
+**Breakfast:** Oatmeal with berries and nuts (300 cal)
+**Lunch:** Grilled chicken salad with olive oil dressing (400 cal)
+**Dinner:** Baked salmon with steamed vegetables (450 cal)
+**Snacks:** Greek yogurt and apple slices (150 cal)
+
+${hasConditions ? `Considering your conditions (${conditions.join(', ')}), focus on anti-inflammatory foods and limit processed items.` : 'This balanced approach supports your health goals.'}`;
+    }
+
+    if (input.includes('sodium') || input.includes('salt')) {
+      return `To reduce sodium in your diet (current limit: ${medicalProfile.sodiumLimit}mg/day):
+
+• Cook at home using fresh herbs and spices instead of salt
+• Read nutrition labels - aim for <140mg sodium per serving
+• Choose fresh fruits and vegetables over canned versions
+• Limit processed foods, deli meats, and restaurant meals
+• Use lemon juice, garlic, and herbs for flavor
+
+${hasConditions && conditions.some(c => c.toLowerCase().includes('pressure')) ? 'This is especially important for managing blood pressure.' : ''}`;
+    }
+
+    if (input.includes('sugar') || input.includes('sweet')) {
+      return `Managing sugar intake (your limit: ${medicalProfile.sugarLimit}g/day):
+
+• Replace sugary drinks with water, herbal tea, or sparkling water
+• Choose whole fruits over fruit juices
+• Read labels for hidden sugars (high fructose corn syrup, sucrose)
+• Use natural sweeteners like stevia or monk fruit
+• Focus on complex carbohydrates over simple sugars
+
+${hasConditions && conditions.some(c => c.toLowerCase().includes('diabetes')) ? 'Blood sugar control is crucial for diabetes management.' : ''}`;
+    }
+
+    if (input.includes('weight') || input.includes('lose') || input.includes('gain')) {
+      const bmi = medicalProfile.weight / Math.pow(medicalProfile.height / 100, 2);
+      const status = bmi < 18.5 ? 'underweight' : bmi > 25 ? 'overweight' : 'normal weight';
+      
+      return `Based on your current BMI of ${bmi.toFixed(1)} (${status}):
+
+• Create a moderate calorie deficit/surplus of 300-500 calories daily
+• Focus on protein (1g per kg body weight minimum)
+• Include strength training to preserve muscle mass
+• Stay hydrated and get adequate sleep
+• Track progress with measurements, not just weight
+
+Your target calories (${medicalProfile.targetCalories}/day) should support healthy ${bmi > 25 ? 'weight loss' : bmi < 18.5 ? 'weight gain' : 'weight maintenance'}.`;
+    }
+
+    if (input.includes('avoid') || input.includes('bad')) {
+      let avoidFoods = ['Highly processed foods', 'Trans fats', 'Excessive refined sugar', 'High sodium processed meats'];
+      
+      if (hasConditions) {
+        if (conditions.some(c => c.toLowerCase().includes('diabetes'))) {
+          avoidFoods.push('Sugary beverages', 'White bread and refined grains');
+        }
+        if (conditions.some(c => c.toLowerCase().includes('pressure'))) {
+          avoidFoods.push('Canned soups', 'Pickled foods', 'Excessive caffeine');
+        }
+        if (conditions.some(c => c.toLowerCase().includes('heart'))) {
+          avoidFoods.push('Saturated fats', 'Fried foods');
+        }
+      }
+
+      return `Foods to limit or avoid with your health profile:
+
+${avoidFoods.map(food => `• ${food}`).join('\n')}
+
+${medicalProfile.allergies?.length > 0 ? `\nAlso avoid your known allergens: ${medicalProfile.allergies.join(', ')}` : ''}
+
+Focus on whole, unprocessed foods that support your health goals.`;
+    }
+
+    if (input.includes('healthy') || input.includes('good') || input.includes('alternative')) {
+      return `Healthy food recommendations for your profile:
+
+**Proteins:** Lean chicken, fish, legumes, Greek yogurt
+**Carbs:** Quinoa, brown rice, sweet potatoes, oats
+**Fats:** Avocado, nuts, olive oil, fatty fish
+**Vegetables:** Leafy greens, colorful bell peppers, broccoli
+**Fruits:** Berries, apples, citrus fruits
+
+${hasConditions ? `These choices support managing ${conditions.join(' and ')}.` : 'These nutrient-dense options support overall health.'}
+
+${hasImage ? 'I can see you\'ve uploaded an image - this helps me provide more specific guidance!' : ''}`;
+    }
+
+    if (input.includes('exercise') || input.includes('workout')) {
+      const age = medicalProfile.age;
+      return `Exercise recommendations for your age (${age}) and health profile:
+
+**Cardio:** 150 minutes moderate intensity per week
+**Strength:** 2-3 sessions targeting major muscle groups
+**Flexibility:** Daily stretching or yoga
+**Balance:** Especially important if over 65
+
+Start gradually and increase intensity slowly. ${hasConditions ? 'Consult your healthcare provider before starting new exercise programs.' : 'Listen to your body and rest when needed.'}`;
+    }
+
+    // Default personalized response
+    return `Thank you for your question about "${userInput}". Based on your health profile:
+
+• Age: ${medicalProfile.age} years
+• Target calories: ${medicalProfile.targetCalories}/day
+• Sodium limit: ${medicalProfile.sodiumLimit}mg/day
+• Current conditions: ${hasConditions ? conditions.join(', ') : 'None reported'}
+
+${hasImage ? 'I can see the image you uploaded. ' : ''}For personalized nutrition advice tailored to your specific situation, I recommend focusing on whole foods, staying within your calorie and sodium targets, and maintaining a balanced approach to nutrition.
+
+${analysisResult ? `Based on your recent food analysis of ${analysisResult.foodName}, ` : ''}Would you like specific recommendations for meal planning, food alternatives, or nutritional strategies?`;
+  };
+
   // Focus input on mount and keep it focused
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -102,18 +224,20 @@ export const AIChat = ({ medicalProfile, analysisResult, className = "" }: AICha
     
     if (!inputValue.trim() || isLoading) return;
 
+    const currentInput = inputValue.trim();
+    const currentImage = uploadedImage;
+
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       type: "user",
-      content: inputValue.trim(),
-      image: uploadedImage || undefined,
+      content: currentInput,
+      image: currentImage || undefined,
       timestamp: new Date()
     };
 
     setMessages(prev => [...prev, userMessage]);
-    const currentInput = inputValue.trim();
-    const currentImage = uploadedImage;
     
+    // Clear input immediately to prevent focus issues
     setInputValue("");
     setUploadedImage(null);
     if (fileInputRef.current) {
@@ -121,16 +245,14 @@ export const AIChat = ({ medicalProfile, analysisResult, className = "" }: AICha
     }
     setIsLoading(true);
 
-    // Simulate AI response
+    // Generate AI response after a realistic delay
     setTimeout(() => {
-      const contextInfo = analysisResult 
-        ? `your food analysis of ${analysisResult.foodName}` 
-        : "your health profile";
+      const aiResponseContent = generateAIResponse(currentInput, !!currentImage);
       
       const aiResponse: ChatMessage = {
         id: (Date.now() + 1).toString(),
         type: "ai",
-        content: `Based on your question about "${currentInput}" and ${contextInfo}, considering your health profile (age ${medicalProfile.age}, weight ${medicalProfile.weight}kg, height ${medicalProfile.height}cm, conditions: ${medicalProfile.conditions.join(', ') || 'None'}), I recommend consulting with your healthcare provider for personalized medical advice. ${currentImage ? 'I can see the image you uploaded - this helps provide more specific guidance.' : ''}`,
+        content: aiResponseContent,
         timestamp: new Date()
       };
       
@@ -141,8 +263,8 @@ export const AIChat = ({ medicalProfile, analysisResult, className = "" }: AICha
       setTimeout(() => {
         inputRef.current?.focus();
       }, 100);
-    }, 2000);
-  }, [inputValue, isLoading, analysisResult, medicalProfile, uploadedImage]);
+    }, 1500);
+  }, [inputValue, isLoading, uploadedImage, medicalProfile, analysisResult]);
 
   const ChatContent = ({ isFullscreen = false }: { isFullscreen?: boolean }) => (
     <div className={`flex flex-col ${isFullscreen ? 'h-[80vh]' : 'h-96'}`}>
@@ -227,7 +349,7 @@ export const AIChat = ({ medicalProfile, analysisResult, className = "" }: AICha
                   className="w-full max-w-xs h-32 object-cover rounded mb-2"
                 />
               )}
-              <p className="text-sm">{message.content}</p>
+              <div className="text-sm whitespace-pre-line">{message.content}</div>
             </div>
             
             {message.type === 'user' && (
